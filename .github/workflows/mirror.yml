@@ -49,35 +49,59 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Mirror Tags
+      - name: Mirror Tags (Multi-Platform for n8nio/n8n)
         run: |
-          ECR_IMAGE_BASE="${{ env.ECR_PUBLIC_REGISTRY }}/${{ matrix.image_name }}" # Use matrix.image_name
+          ECR_IMAGE_BASE="${{ env.ECR_PUBLIC_REGISTRY }}/${{ matrix.image_name }}"
           echo "Mirroring to ${ECR_IMAGE_BASE}"
 
-          # Loop through the specified tags from the matrix
-          for TAG in ${{ matrix.tags_to_mirror }}; do # Use matrix.tags_to_mirror
+          for TAG in ${{ matrix.tags_to_mirror }}; do
             echo "--- Processing tag: $TAG for image ${{ matrix.image_name }} ---"
-            SOURCE_IMAGE="${{ matrix.image_name }}:${TAG}" # Use matrix.image_name
+            SOURCE_IMAGE="${{ matrix.image_name }}:${TAG}"
+            TARGET_IMAGE_AMD64="${ECR_IMAGE_BASE}:${TAG}-amd64"
+            TARGET_IMAGE_ARM64="${ECR_IMAGE_BASE}:${TAG}-arm64"
             TARGET_IMAGE="${ECR_IMAGE_BASE}:${TAG}"
 
-            echo "Pulling ${SOURCE_IMAGE}"
-            if ! docker pull "${SOURCE_IMAGE}"; then
-              echo "ERROR: Failed to pull ${SOURCE_IMAGE}. Skipping."
-              continue # Optionally skip failed pulls
-            fi
+            if [[ "${{ matrix.image_name }}" == "n8nio/n8n" ]]; then
+              # Pull both platforms
+              echo "Pulling ${SOURCE_IMAGE} for linux/amd64"
+              docker pull --platform linux/amd64 "${SOURCE_IMAGE}"
+              echo "Pulling ${SOURCE_IMAGE} for linux/arm64"
+              docker pull --platform linux/arm64 "${SOURCE_IMAGE}"
 
-            echo "Tagging ${SOURCE_IMAGE} as ${TARGET_IMAGE}"
-            docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
+              # Tag for ECR
+              docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE_AMD64}"
+              docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE_ARM64}"
 
-            echo "Pushing ${TARGET_IMAGE}"
-            if ! docker push "${TARGET_IMAGE}"; then
-               echo "ERROR: Failed to push ${TARGET_IMAGE}. Skipping."
-               # Consider adding retry logic here if needed
-               continue
+              # Push both images
+              docker push "${TARGET_IMAGE_AMD64}"
+              docker push "${TARGET_IMAGE_ARM64}"
+
+              # Create and push manifest
+              docker manifest create "${TARGET_IMAGE}" \
+                --amend "${TARGET_IMAGE_AMD64}" \
+                --amend "${TARGET_IMAGE_ARM64}"
+              docker manifest push "${TARGET_IMAGE}"
+
+              echo "Successfully mirrored multi-platform tag: ${TAG}"
+              # Optionally clean up
+              # docker rmi "${SOURCE_IMAGE}" "${TARGET_IMAGE_AMD64}" "${TARGET_IMAGE_ARM64}" || true
+            else
+              # Default: single-platform mirror
+              echo "Pulling ${SOURCE_IMAGE}"
+              if ! docker pull "${SOURCE_IMAGE}"; then
+                echo "ERROR: Failed to pull ${SOURCE_IMAGE}. Skipping."
+                continue
+              fi
+              echo "Tagging ${SOURCE_IMAGE} as ${ECR_IMAGE_BASE}:${TAG}"
+              docker tag "${SOURCE_IMAGE}" "${ECR_IMAGE_BASE}:${TAG}"
+              echo "Pushing ${ECR_IMAGE_BASE}:${TAG}"
+              if ! docker push "${ECR_IMAGE_BASE}:${TAG}"; then
+                echo "ERROR: Failed to push ${ECR_IMAGE_BASE}:${TAG}. Skipping."
+                continue
+              fi
+              echo "Successfully mirrored tag: ${TAG}"
+              # docker rmi "${SOURCE_IMAGE}" "${ECR_IMAGE_BASE}:${TAG}" || true
             fi
-            echo "Successfully mirrored tag: ${TAG}"
-            # Optional: Clean up local image to save runner disk space
-            # docker rmi "${SOURCE_IMAGE}" "${TARGET_IMAGE}" || true
           done
 
           echo "--- Mirroring complete for ${{ matrix.image_name }} ---"
