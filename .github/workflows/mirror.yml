@@ -14,11 +14,18 @@ permissions:
 jobs:
   mirror-images:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # Allows other matrix jobs to continue if one fails
+      matrix:
+        include:
+          - image_name: n8nio/n8n
+            tags_to_mirror: "stable beta next latest"
+          - image_name: cloudflare/cloudflared
+            tags_to_mirror: "latest latest-arm64 latest-amd64"
     env:
       AWS_REGION: us-east-1
       ECR_PUBLIC_REGISTRY: public.ecr.aws/pahudnet
-      ECR_REPOSITORY: n8nio/n8n
-      DOCKERHUB_IMAGE: n8nio/n8n
+      # ECR_REPOSITORY and DOCKERHUB_IMAGE are now defined in the matrix
 
     steps:
       - name: Checkout code
@@ -44,13 +51,13 @@ jobs:
 
       - name: Mirror Tags
         run: |
-          ECR_IMAGE_BASE="${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
+          ECR_IMAGE_BASE="${{ env.ECR_PUBLIC_REGISTRY }}/${{ matrix.image_name }}" # Use matrix.image_name
           echo "Mirroring to ${ECR_IMAGE_BASE}"
 
-          # Loop through the specified tags
-          for TAG in stable beta next latest; do
-            echo "--- Processing tag: $TAG ---"
-            SOURCE_IMAGE="${{ env.DOCKERHUB_IMAGE }}:${TAG}"
+          # Loop through the specified tags from the matrix
+          for TAG in ${{ matrix.tags_to_mirror }}; do # Use matrix.tags_to_mirror
+            echo "--- Processing tag: $TAG for image ${{ matrix.image_name }} ---"
+            SOURCE_IMAGE="${{ matrix.image_name }}:${TAG}" # Use matrix.image_name
             TARGET_IMAGE="${ECR_IMAGE_BASE}:${TAG}"
 
             echo "Pulling ${SOURCE_IMAGE}"
@@ -73,4 +80,4 @@ jobs:
             # docker rmi "${SOURCE_IMAGE}" "${TARGET_IMAGE}" || true
           done
 
-          echo "--- Mirroring complete ---"
+          echo "--- Mirroring complete for ${{ matrix.image_name }} ---"
