@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: us-east-1
-      ECR_PUBLIC_REGISTRY: public.ecr.aws/pahud
-      ECR_REPOSITORY: n8n
+      ECR_PUBLIC_REGISTRY: public.ecr.aws/pahudnet
+      ECR_REPOSITORY: n8nio/n8n
       DOCKERHUB_IMAGE: n8nio/n8n
 
     steps:
