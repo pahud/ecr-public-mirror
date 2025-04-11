@@ -42,54 +42,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Get n8n Tags from Docker Hub
-        id: get-tags
-        run: |
-          echo "Fetching tags for ${{ env.DOCKERHUB_IMAGE }}..."
-          TAGS_JSON=""
-          PAGE=1
-          # Docker Hub API v2 pagination
-          while true; do
-            RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.DOCKERHUB_IMAGE }}/tags/?page_size=100&page=${PAGE}")
-            # Check if 'results' array is empty or null, indicating end of pages
-            if [ "$(echo "$RESPONSE" | jq '.results | length')" -eq 0 ]; then
-              break
-            fi
-            # Append results, adding a comma if TAGS_JSON is not empty
-            if [ -z "$TAGS_JSON" ]; then
-              TAGS_JSON=$(echo "$RESPONSE" | jq -c '.results')
-            else
-              TAGS_JSON=$(echo "$TAGS_JSON $RESPONSE" | jq -s '.[0] + .[1].results')
-            fi
-            # Check if 'next' is null, indicating last page
-            if [ "$(echo "$RESPONSE" | jq -r '.next')" == "null" ]; then
-              break
-            fi
-            PAGE=$((PAGE + 1))
-            sleep 1 # Be nice to the API
-          done
-
-          # Extract just the tag names
-          TAG_LIST=$(echo "$TAGS_JSON" | jq -r '.[].name')
-          echo "Found tags:"
-          echo "$TAG_LIST"
-          # Store tags in a way that the next step can easily read line by line
-          echo "$TAG_LIST" > n8n_tags.txt
-          echo "Tags saved to n8n_tags.txt"
-
       - name: Mirror Tags
         run: |
           ECR_IMAGE_BASE="${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
           echo "Mirroring to ${ECR_IMAGE_BASE}"
 
-          # Read tags line by line from the file
-          while IFS= read -r TAG || [ -n "$TAG" ]; do
-            if [ -z "$TAG" ]; then
-              continue # Skip empty lines if any
-            fi
+          # Loop through the specified tags
+          for TAG in stable beta next latest; do
             echo "--- Processing tag: $TAG ---"
             SOURCE_IMAGE="${{ env.DOCKERHUB_IMAGE }}:${TAG}"
             TARGET_IMAGE="${ECR_IMAGE_BASE}:${TAG}"
@@ -112,6 +71,6 @@ jobs:
             echo "Successfully mirrored tag: ${TAG}"
             # Optional: Clean up local image to save runner disk space
             # docker rmi "${SOURCE_IMAGE}" "${TARGET_IMAGE}" || true
-          done < n8n_tags.txt
+          done
 
           echo "--- Mirroring complete ---"
