@@ -82,7 +82,7 @@ jobs:
 
       - name: Mirror Tags
         run: |
-          ECR_IMAGE_BASE="${{ steps.login-ecr-public.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
+          ECR_IMAGE_BASE="${{ env.ECR_PUBLIC_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
           echo "Mirroring to ${ECR_IMAGE_BASE}"
 
           # Read tags line by line from the file
